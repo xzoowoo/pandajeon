@@ -4,7 +4,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { MessageSquare, Heart, Send, Image as ImageIcon, X, TrendingUp, Hash, RefreshCw, User, ChevronDown, ChevronUp, CornerDownRight } from 'lucide-react';
 
-// 1. 수파베이스 연결
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
@@ -17,7 +16,7 @@ interface Comment {
   time: string;
   likes: number;
   is_liked: boolean;
-  replies?: Comment[]; // 대댓글을 위한 배열
+  replies?: Comment[];
 }
 
 interface Post {
@@ -33,21 +32,20 @@ interface Post {
   created_at: string;
 }
 
-export default function PandajeonUltimateV4() {
+export default function PandajeonUltimateV5() {
   const [currentUser, setCurrentUser] = useState("");
   const [activeSub, setActiveSub] = useState("전체");
   const [posts, setPosts] = useState<Post[]>([]);
   const [expandedPosts, setExpandedPosts] = useState<Set<number>>(new Set());
   const [fullImage, setFullImage] = useState<string | null>(null);
 
-  // 입력 상태
   const [inputTitle, setInputTitle] = useState("");
   const [inputContent, setInputContent] = useState("");
   const [inputSub, setInputSub] = useState("자유");
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [commentInputs, setCommentInputs] = useState<{ [key: number]: string }>({}); 
-  const [replyInputs, setReplyInputs] = useState<{ [key: number]: string }>({}); // 대댓글 입력창 관리
-  const [replyingTo, setReplyingTo] = useState<number | null>(null); // 현재 어떤 댓글에 답글을 쓰는지 확인
+  const [replyInputs, setReplyInputs] = useState<{ [key: number]: string }>({});
+  const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPosts = async () => {
@@ -90,19 +88,25 @@ export default function PandajeonUltimateV4() {
     fetchPosts();
   };
 
-  // ★ 댓글 좋아요 기능
-  const toggleCommentLike = async (postId: number, comments: Comment[], commentId: number) => {
-    const updatedComments = comments.map(c => {
-      if (c.id === commentId) {
-        return { ...c, likes: c.is_liked ? (c.likes || 0) - 1 : (c.likes || 0) + 1, is_liked: !c.is_liked };
-      }
-      return c;
-    });
+  // ★ 댓글 및 대댓글 좋아요 통합 로직
+  const toggleCommentLike = async (postId: number, comments: Comment[], targetId: number) => {
+    const updateRecursive = (items: Comment[]): Comment[] => {
+      return items.map(c => {
+        if (c.id === targetId) {
+          return { ...c, likes: c.is_liked ? (c.likes || 0) - 1 : (c.likes || 0) + 1, is_liked: !c.is_liked };
+        }
+        if (c.replies && c.replies.length > 0) {
+          return { ...c, replies: updateRecursive(c.replies) };
+        }
+        return c;
+      });
+    };
+
+    const updatedComments = updateRecursive(comments);
     await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
     fetchPosts();
   };
 
-  // ★ 댓글 & 대댓글 통합 작성 기능
   const handleCommentSubmit = async (e: React.BaseSyntheticEvent, postId: number, currentComments: Comment[], parentCommentId?: number) => {
     e.stopPropagation();
     const isReply = !!parentCommentId;
@@ -147,14 +151,12 @@ export default function PandajeonUltimateV4() {
 
   return (
     <div className="min-h-screen bg-[#DAE0E6] font-sans pb-10 text-[#1A1A1B]">
-      {/* 이미지 확대 모달 */}
       {fullImage && (
-        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-4" onClick={() => setFullImage(null)}>
+        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-4 cursor-zoom-out" onClick={() => setFullImage(null)}>
           <img src={fullImage} className="max-w-full max-h-full rounded shadow-2xl object-contain" alt="" />
         </div>
       )}
 
-      {/* 네비게이션 */}
       <nav className="sticky top-0 bg-white border-b h-12 flex items-center justify-center px-5 z-50 shadow-sm">
         <div className="text-xl font-bold text-orange-600 flex items-center gap-1 cursor-pointer" onClick={() => setActiveSub("전체")}>
           <TrendingUp size={24}/> 판대전
@@ -162,15 +164,14 @@ export default function PandajeonUltimateV4() {
         <div className="absolute right-5 flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-full border cursor-pointer hover:bg-gray-100" onClick={refreshNickname}>
           <User size={14} className="text-gray-500"/>
           <span className="text-xs font-bold text-gray-700">{currentUser}</span>
-          <RefreshCw size={12} className="text-gray-400"/>
+          <RefreshCw size={12} className="text-gray-400 ml-1"/>
         </div>
       </nav>
 
       <div className="max-w-[800px] mx-auto py-5 flex gap-6 px-4">
-        {/* 사이드바 */}
         <aside className="w-48 hidden lg:block sticky top-20 h-fit">
           <div className="bg-white rounded p-3 border shadow-sm">
-            <h2 className="text-[10px] font-bold text-gray-400 mb-3 uppercase px-2">소그룹</h2>
+            <h2 className="text-[10px] font-bold text-gray-400 mb-3 uppercase px-2 tracking-widest">소그룹</h2>
             <nav className="space-y-0.5">
               {subGroups.map((sub) => (
                 <button key={sub} onClick={() => setActiveSub(sub)} className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold transition ${activeSub === sub ? 'bg-orange-50 text-orange-600' : 'hover:bg-gray-50 text-gray-700'}`}>
@@ -181,7 +182,6 @@ export default function PandajeonUltimateV4() {
           </div>
         </aside>
 
-        {/* 피드 */}
         <main className="flex-1 space-y-4">
           <div className="bg-white p-4 rounded border shadow-sm space-y-3">
             <div className="flex gap-2 items-center bg-gray-100 rounded px-2 py-1 w-fit text-xs font-bold text-gray-500">
@@ -206,6 +206,7 @@ export default function PandajeonUltimateV4() {
           <div className="space-y-3">
             {posts.filter(p => activeSub === "전체" || p.sub === activeSub).map((post) => {
               const isExpanded = expandedPosts.has(post.id);
+              const hasImages = post.images && post.images.length > 0;
               return (
                 <div key={post.id} className="bg-white rounded border shadow-sm overflow-hidden hover:border-gray-400 transition cursor-pointer" onClick={() => toggleExpand(post.id)}>
                   <div className="p-4">
@@ -213,15 +214,26 @@ export default function PandajeonUltimateV4() {
                       <span className="text-black uppercase">p/{post.sub}</span> • {post.author}
                     </div>
                     <h3 className="text-md font-bold mb-2">{post.title}</h3>
-                    {!isExpanded && <p className="text-sm text-gray-700 line-clamp-2">{post.content}</p>}
+                    
+                    {/* ★ 썸네일 뷰 복구 포인트 */}
+                    {!isExpanded && (
+                      <div className="flex gap-4">
+                        <p className="text-sm text-gray-700 flex-1 line-clamp-3 leading-relaxed">{post.content}</p>
+                        {hasImages && (
+                          <img src={post.images[0]} className="w-24 h-24 object-cover rounded-lg border flex-shrink-0" alt="thumbnail" />
+                        )}
+                      </div>
+                    )}
+
                     {isExpanded && (
                       <div className="space-y-4">
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{post.content}</p>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{post.content}</p>
                         {post.images?.map((img, i) => (
                           <img key={i} src={img} className="w-full rounded border cursor-zoom-in" onClick={(e) => { e.stopPropagation(); setFullImage(img); }} />
                         ))}
                       </div>
                     )}
+
                     <div className="flex items-center justify-between pt-3 mt-3 border-t">
                       <div className="flex items-center gap-4 text-xs font-bold text-gray-500">
                         <button onClick={(e) => toggleLike(e, post.id, post.likes, post.is_liked)} className={`flex items-center gap-1 ${post.is_liked ? 'text-red-500' : ''}`}><Heart size={14} fill={post.is_liked ? "currentColor" : "none"}/> {post.likes}</button>
@@ -241,7 +253,7 @@ export default function PandajeonUltimateV4() {
                       {post.comments?.map((comment) => (
                         <div key={comment.id} className="space-y-2">
                           <div className="flex gap-2 group">
-                            <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-[8px] font-bold text-gray-500">{comment.author[0]}</div>
+                            <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-[8px] font-bold text-gray-500 flex-shrink-0">{comment.author[0]}</div>
                             <div className="flex-1 bg-white p-2 rounded-lg border shadow-sm">
                               <div className="text-[10px] font-bold mb-0.5">{comment.author}</div>
                               <p className="text-xs text-gray-800 mb-2">{comment.content}</p>
@@ -252,21 +264,23 @@ export default function PandajeonUltimateV4() {
                             </div>
                           </div>
 
-                          {/* 대댓글 목록 */}
                           {comment.replies?.map((reply) => (
                             <div key={reply.id} className="flex gap-2 pl-8">
-                              <CornerDownRight size={14} className="text-gray-300 mt-1"/>
-                              <div className="flex-1 bg-gray-100 p-2 rounded-lg border border-gray-200">
+                              <CornerDownRight size={14} className="text-gray-300 mt-1 flex-shrink-0"/>
+                              <div className="flex-1 bg-gray-100 p-2 rounded-lg border border-gray-200 shadow-inner">
                                 <div className="text-[10px] font-bold mb-0.5">{reply.author}</div>
-                                <p className="text-xs text-gray-700">{reply.content}</p>
+                                <p className="text-xs text-gray-700 mb-2">{reply.content}</p>
+                                {/* ★ 대댓글 좋아요 버튼 추가 */}
+                                <button onClick={() => toggleCommentLike(post.id, post.comments, reply.id)} className={`flex items-center gap-1 text-[10px] font-bold ${reply.is_liked ? 'text-red-500' : 'text-gray-400'}`}>
+                                  <Heart size={10} fill={reply.is_liked ? "currentColor" : "none"}/> {reply.likes || 0}
+                                </button>
                               </div>
                             </div>
                           ))}
 
-                          {/* 대댓글 입력창 */}
                           {replyingTo === comment.id && (
                             <div className="pl-8 flex gap-2">
-                              <input type="text" value={replyInputs[comment.id] || ""} onChange={(e) => setReplyInputs(prev => ({ ...prev, [comment.id]: e.target.value }))} placeholder="답글 작성..." className="flex-1 bg-white border rounded-full px-3 py-1 text-[11px] outline-none" onKeyDown={(e) => e.key === 'Enter' && handleCommentSubmit(e, post.id, post.comments, comment.id)}/>
+                              <input type="text" value={replyInputs[comment.id] || ""} onChange={(e) => setReplyInputs(prev => ({ ...prev, [comment.id]: e.target.value }))} placeholder="답글 작성..." className="flex-1 bg-white border rounded-full px-3 py-1 text-[11px] outline-none border-blue-200" onKeyDown={(e) => e.key === 'Enter' && handleCommentSubmit(e, post.id, post.comments, comment.id)}/>
                               <button onClick={(e) => handleCommentSubmit(e, post.id, post.comments, comment.id)} className="text-blue-500 font-bold text-[11px]">등록</button>
                             </div>
                           )}
